@@ -12,7 +12,7 @@ pub struct ParticleBundle {
     pub collider: CircleCollider,
     pub vel: Velocity,
     pub pre_solve_vel: PreSolveVel,
-    restitution: Restitution
+    pub restitution: Restitution
 }
 
 impl ParticleBundle {
