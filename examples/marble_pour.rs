@@ -1,5 +1,9 @@
 use bevy::prelude::*;
-use bevy_xpbd::{components::{CircleCollider, Pos}, entity::ParticleBundle, XPBDPlugin, DELTA_TIME};
+use bevy_xpbd::{
+    components::{BoxCollider, CircleCollider, Pos},
+    entity::{ParticleBundle, StaticBoxBundle},
+    XPBDPlugin, DELTA_TIME,
+};
 use rand::random;
 
 fn main() {
@@ -39,17 +43,33 @@ fn startup(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
+    let sphere = meshes.add(Sphere::new(1.).mesh().ico(4).unwrap());
+    let blue = materials.add(StandardMaterial {
+        base_color: Color::rgb(0.4, 0.4, 0.6),
+        unlit: true,
+        ..default()
+    });
+    // let radius = 15.;
+    let size = Vec2::new(5., 2.);
     commands.insert_resource(Meshes {
-        sphere: meshes.add(Sphere::new(1.).mesh().ico(4).unwrap()),
+        sphere: sphere.clone(),
     });
 
-    commands.insert_resource(Materials {
-        blue: materials.add(StandardMaterial {
-            base_color: Color::rgb(0.4, 0.4, 0.6),
-            unlit: true,
+    commands.insert_resource(Materials { blue: blue.clone() });
+
+    commands.spawn((
+        PbrBundle {
+            mesh: meshes.add(Rectangle::new(1., 1.).mesh()),
+            material: blue.clone(),
+            transform: Transform::from_scale(size.extend(1.)),
             ..default()
-        }),
-    });
+        },
+        StaticBoxBundle {
+            pos: Pos(Vec2::new(0., -3.)),
+            collider: BoxCollider { size },
+            ..default()
+        },
+    ));
 
     commands.spawn((
         Camera3dBundle {

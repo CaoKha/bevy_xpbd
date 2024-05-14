@@ -4,10 +4,24 @@ version = "0.1.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-#
+
 [dependencies]
 bevy = { version = "0.13.2" }
+
+[dev-dependencies]
 rand = { version = "0.8" }
 
-# [dev-dependencies]
-# bevy = {version = "0.13.2", features = ["dynamic_linking"]}
+[target.x86_64-unknown-linux-gnu.dependencies]
+bevy = { version = "0.13.2", features = ["dynamic_linking"] }
+
+[target.wasm32-unknown-unknwon.dependencies]
+wasm-bindgen = { version = "0.2" }
+bevy = { version = "0.13.2" }
+
+[[example]]
+name = "marble_pour"
+path = "examples/marble_pour.rs"
+
+[[example]]
+name = "particle_collisions"
+path = "examples/particle_collisions.rs"
