@@ -12,7 +12,16 @@ fn main() {
         .insert_resource(ClearColor(Color::rgb(0.8, 0.8, 0.9)))
         .insert_resource(Msaa::Sample4)
         .add_plugins((
-            DefaultPlugins,
+            DefaultPlugins
+                .set(WindowPlugin {
+                primary_window: Some(Window {
+                    resolution: (480., 360.).into(),
+                    // prevent_default_event_handling: true,
+                    ..default()
+                }),
+                ..default()
+            })
+            ,
             XPBDPlugin,
             LogDiagnosticsPlugin::default(),
             FrameTimeDiagnosticsPlugin,

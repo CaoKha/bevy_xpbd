@@ -5,7 +5,7 @@ pub mod resources;
 pub const DELTA_TIME: f32 = 1. / 60.;
 
 use components::*;
-use resources::{Contacts, Gravity, StaticContacts};
+use resources::{CollisionPairs, Contacts, Gravity, StaticContacts};
 
 #[derive(Debug, Default)]
 pub struct XPBDPlugin;
@@ -14,6 +14,7 @@ impl Plugin for XPBDPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(Time::<Fixed>::from_seconds(DELTA_TIME.into()))
             .init_resource::<Gravity>()
+            .init_resource::<CollisionPairs>()
             .init_resource::<Contacts>()
             .init_resource::<StaticContacts>()
             .add_systems(
@@ -21,17 +22,14 @@ impl Plugin for XPBDPlugin {
                 (
                     collect_collision_pairs.before(integrate),
                     integrate,
-                    clear_contacts.before(solv_pos),
-
-                    solv_pos.after(integrate),
-                    solv_pos_statics.after(integrate),
+                    clear_contacts.before(solve_pos),
+                    solve_pos.after(integrate),
+                    solve_pos_statics.after(integrate),
                     solve_pos_static_boxes.after(integrate),
-
-                    update_velocity.after(solv_pos),
-
-                    solv_vel.after(update_velocity),
-                    solv_vel_statics.after(update_velocity),
-                    sync_transform.after(solv_vel),
+                    update_velocity.after(solve_pos),
+                    solve_vel.after(update_velocity),
+                    solve_vel_statics.after(update_velocity),
+                    sync_transform.after(solve_vel),
                 ),
             );
     }
@@ -69,16 +67,46 @@ fn update_velocity(mut query: Query<(&mut Pos, &mut PrevPos, &mut Velocity)>) {
     }
 }
 
-fn collect_collision_pairs() {}
-fn solv_pos(
-    mut query: Query<(Entity, &mut Pos, &CircleCollider, &Mass)>,
-    mut contacts: ResMut<Contacts>,
+fn collect_collision_pairs(
+    query: Query<(Entity, &Pos, &Velocity, &CircleCollider)>,
+    mut collision_pairs: ResMut<CollisionPairs>,
 ) {
-    let mut iter = query.iter_combinations_mut();
-    while let Some(
-        [(entity_a, mut pos_a, circle_a, mass_a), (entity_b, mut pos_b, circle_b, mass_b)],
-    ) = iter.fetch_next()
-    {
+    collision_pairs.0.clear();
+    let k = 2.;
+    let safety_margin_factor = k * DELTA_TIME;
+    let safety_margin_factor_sqr = safety_margin_factor.powi(2);
+    unsafe {
+        for (entity_a, pos_a, vel_a, circle_a) in query.iter_unsafe() {
+            let vel_a_sqr = vel_a.0.length_squared();
+            for (entity_b, pos_b, vel_b, circle_b) in query.iter_unsafe() {
+                if entity_a <= entity_b {
+                    continue;
+                }
+                let ab = pos_b.0 - pos_a.0;
+                let vel_b_sqr = vel_b.0.length_squared();
+                let safety_margin_sqr = safety_margin_factor_sqr * (vel_a_sqr + vel_b_sqr);
+                let combined_radius = circle_a.radius + circle_b.radius + safety_margin_sqr.sqrt();
+                let ab_sqr_len = ab.length_squared();
+                if ab_sqr_len < combined_radius.powi(2) {
+                    collision_pairs.0.push((entity_a, entity_b))
+                }
+            }
+        }
+    }
+}
+fn solve_pos(
+    query: Query<(&mut Pos, &CircleCollider, &Mass)>,
+    collision_pairs: ResMut<CollisionPairs>,
+) {
+    for (entity_a, entity_b) in collision_pairs.0.iter() {
+        let ((mut pos_a, circle_a, mass_a), (mut pos_b, circle_b, mass_b)) = unsafe {
+            assert!(entity_a != entity_b);
+            (
+                query.get_unchecked(*entity_a).unwrap(),
+                query.get_unchecked(*entity_b).unwrap(),
+            )
+        };
+
         let ab = pos_b.0 - pos_a.0;
         let combined_radius = circle_a.radius + circle_b.radius;
         if ab.length_squared() < combined_radius.powi(2) {
@@ -89,11 +117,10 @@ fn solv_pos(
             let w_sum = w_a + w_b;
             pos_a.0 -= n * penetration_depth * w_a / w_sum;
             pos_b.0 += n * penetration_depth * w_b / w_sum;
-            contacts.0.push((entity_a, entity_b, n));
         }
     }
 }
-fn solv_vel(
+fn solve_vel(
     query: Query<(&mut Velocity, &PreSolveVel, &Mass, &Restitution)>,
     contacts: Res<Contacts>,
 ) {
@@ -128,7 +155,7 @@ fn solv_vel(
     }
 }
 
-fn solv_vel_statics(
+fn solve_vel_statics(
     mut dynamics: Query<(&mut Velocity, &PreSolveVel, &Restitution), With<Mass>>,
     statics: Query<&Restitution, Without<Mass>>,
     contacts: Res<StaticContacts>,
@@ -143,7 +170,7 @@ fn solv_vel_statics(
     }
 }
 
-fn solv_pos_statics(
+fn solve_pos_statics(
     mut dynamics: Query<(Entity, &mut Pos, &CircleCollider), With<Mass>>,
     statics: Query<(Entity, &Pos, &CircleCollider), Without<Mass>>,
     mut contacts: ResMut<StaticContacts>,
